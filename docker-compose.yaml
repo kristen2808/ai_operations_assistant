@@ -1,0 +1,20 @@
+services:
+
+  postgres:
+    image: postgres:18
+    container_name: ai_operations_postgres
+
+    environment:
+      POSTGRES_USER: ai_user
+      POSTGRES_PASSWORD: ai_password
+      POSTGRES_DB: ai_operations
+
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+    ports:
+      - "5432:5432"
+
+volumes:
+  postgres_data:
