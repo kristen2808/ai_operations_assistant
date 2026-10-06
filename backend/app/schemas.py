@@ -15,3 +15,12 @@ class BaseResponseModel(BaseModel):
 class HealthResponse(BaseModel):
     status: str = "healthy"
     timestamp: datetime = datetime.now()
+
+class TestCreate(BaseModel):
+    jmeno: str
+    prijmeni: str
+
+class TestResponse(BaseModel):
+    id: int
+    jmeno: str
+    prijmeni: str

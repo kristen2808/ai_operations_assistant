@@ -13,6 +13,7 @@ ai_operations_assistant/
 │   │   ├── main.py          # FastAPI app s routes a deps
 │   │   ├── config.py        # Environment config
 │   │   ├── database.py      # SQLAlchemy async engine
+│   │   ├── models.py         # SQLAlchemy models
 │   │   └── schemas.py       # Pydantic schemas
 │   │   └── routers/         # API routes
 │   │       ├── __init__.py
