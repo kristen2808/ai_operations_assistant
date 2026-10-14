@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.schemas import TestCreate
@@ -6,17 +7,22 @@ from backend.app.schemas import TestResponse
 from backend.app.models import Test,Base
 from backend.app.database import get_db
 
-print(Base.metadata.tables)
-
 router = APIRouter(prefix="/test", tags=["test"])
 
 
-@router.get("/")
-async def test_check():
-    return {
-        "jmeno": "Milan",
-        "prijmeni": "Janacek"
-    }
+@router.get("/", response_model=list[TestResponse])
+async def test_check(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Test))
+    return result.scalars().all()
+
+
+@router.get("/{test_id}", response_model=TestResponse)
+async def test_get(test_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Test).where(Test.id == test_id))
+    test = result.scalar_one_or_none()
+    if test is None:
+        raise HTTPException(status_code=404, detail="Test not found")
+    return test
 
 
 @router.post("/", response_model=TestResponse)
