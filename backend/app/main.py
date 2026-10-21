@@ -1,12 +1,9 @@
 from backend.app.database import engine
-from backend.app.models import Base
 from sqlalchemy import text
 
 from backend.app.routers import api_router
-from backend.app.schemas import HealthResponse
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.app.database import get_db
 
 app = FastAPI(
     title="AI Operations Assistant API",
@@ -23,12 +20,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Create tables on startup
+# Test database connection on startup
 @app.on_event("startup")
 async def startup_db_event():
     async with engine.begin() as conn:
         await conn.execute(text("SELECT 1"))  # Test connection
-        await conn.run_sync(Base.metadata.create_all)
 
 # Mount API routes
 app.include_router(api_router, prefix="/api/v1")

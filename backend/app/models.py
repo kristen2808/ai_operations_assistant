@@ -11,3 +11,4 @@ class Test(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     jmeno: Mapped[str] = mapped_column(String(100))
     prijmeni: Mapped[str] = mapped_column(String(100))
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)

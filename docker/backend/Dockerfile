@@ -6,11 +6,14 @@ RUN pip install --no-cache-dir uv
 # Set working directory
 WORKDIR /app
 
-# Copy pyproject.toml first for caching
-COPY pyproject.toml /app/
+# Copy dependency manifests first for caching
+COPY pyproject.toml uv.lock /app/
 
 # Install dependencies with uv
-RUN uv sync
+RUN uv sync --locked
+
+# Copy Alembic configuration; migration files are included with backend below
+COPY alembic.ini /app/
 
 # Copy the entire backend app to /app/backend
 COPY backend /app/backend
