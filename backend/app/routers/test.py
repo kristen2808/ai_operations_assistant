@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.schemas import TestCreate
 from backend.app.schemas import TestResponse
-from backend.app.models import Test,Base
+from backend.app.models import Test
 from backend.app.database import get_db
 
 router = APIRouter(prefix="/test", tags=["test"])
@@ -38,6 +38,7 @@ async def test_update(
 
     test.jmeno = data.jmeno
     test.prijmeni = data.prijmeni
+    test.email = data.email
     await db.commit()
     return test
 
@@ -62,15 +63,10 @@ async def test_create(
 
     test = Test(
         jmeno=data.jmeno,
-        prijmeni=data.prijmeni
+        prijmeni=data.prijmeni,
+        email=data.email,
     )
 
     db.add(test)
     await db.commit()
-    print(test)
-
-    return {
-        "id": test.id,
-        "jmeno": test.jmeno,
-        "prijmeni": test.prijmeni
-    }
+    return test

@@ -19,8 +19,12 @@ class HealthResponse(BaseModel):
 class TestCreate(BaseModel):
     jmeno: str
     prijmeni: str
+    email: EmailStr | None = None
 
 class TestResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     jmeno: str
     prijmeni: str
+    email: EmailStr | None = None

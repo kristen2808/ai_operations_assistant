@@ -1,109 +1,190 @@
 # AI Operations Assistant
 
-Backend API pro AI Operations Assistant aplikaci.
+Backend API postavené na FastAPI, asynchronním SQLAlchemy a PostgreSQL. Schéma ORM tabulek spravuje Alembic.
+
+## Způsob práce
+
+- Python, uv, FastAPI, SQLAlchemy a Alembic běží pouze v Dockeru. Lokální Python ani `.venv` nejsou potřeba.
+- Zdrojové soubory i všechny migrace jsou uložené na macOS v projektu a verzované v Gitu.
+- Backend nemá bind mount zdrojových souborů. Dockerfile při buildu kopíruje backend, migrace a `alembic.ini` do `/app`.
+- Závislosti včetně Alembicu se instalují do image pomocí `uv sync --locked` podle `pyproject.toml` a `uv.lock`.
+- Po změně zdrojových souborů, závislostí nebo migrací je potřeba backend znovu sestavit.
 
 ## Struktura projektu
 
-```
+```text
 ai_operations_assistant/
 ├── backend/
-│   ├── main.py              # Entry point aplikace
+│   ├── main.py                    # Alternativní spouštěcí modul
 │   ├── app/
 │   │   ├── __init__.py
-│   │   ├── main.py          # FastAPI app s routes a deps
-│   │   ├── config.py        # Environment config
-│   │   ├── database.py      # SQLAlchemy async engine
-│   │   ├── models.py         # SQLAlchemy models
-│   │   └── schemas.py       # Pydantic schemas
-│   │   └── routers/         # API routes
+│   │   ├── main.py                # FastAPI aplikace; vstupní bod Dockeru
+│   │   ├── config.py              # Konfigurace z proměnných prostředí
+│   │   ├── database.py            # Async engine a databázové sessions
+│   │   ├── models.py              # ORM Base a model Test
+│   │   ├── schemas.py             # Pydantic schémata API
+│   │   └── routers/
 │   │       ├── __init__.py
-│   │       └── health.py    # /health endpoint
-│   └── alembic/             # Database migrations (nevytvoreno)
+│   │       ├── health.py
+│   │       └── test.py            # CRUD pro záznamy tests
+│   └── alembic/
+│       ├── README
+│       ├── env.py                 # Async připojení a filtr spravovaných tabulek
+│       ├── script.py.mako         # Šablona migračních revizí
+│       └── versions/
+│           ├── 5d3c5b71f797_initial_create_tests.py
+│           └── 6f536185102a_add_email_to_tests.py
 ├── docker/
-│   ├── postgres/
-│   │   └── init.sql         # Database schema (stávající)
-│   └── backend/
-│       └── Dockerfile       # Backend Docker image
-├── docker-compose.yaml      # Docker orchestrace
-├── pyproject.toml          # Dependencies (uv)
-└── README.md               # Tento soubor
+│   ├── postgres/init.sql          # Inicializace customers a orders
+│   └── backend/Dockerfile
+├── .dockerignore                 # Vyloučení lokálního prostředí a cache z buildu
+├── .gitignore                    # Vyloučení __pycache__ z Gitu
+├── alembic.ini                   # Konfigurace Alembicu a cesta k migracím
+├── docker-compose.yaml
+├── pyproject.toml
+├── uv.lock
+└── README.md
 ```
 
-## Instalace a spouštění
+## Spuštění
 
-### 1. Spusť PostgreSQL
+Předpoklady: Docker Desktop s Docker Compose a volné porty 8000 a 5432. Příkazy spouštěj z kořenového adresáře projektu.
 
 ```bash
-docker-compose up -d postgres
+docker compose up -d --build backend
 ```
 
-Počkej cca 30 sekund pro inicializaci databáze.
+Compose spustí také PostgreSQL a před startem backendu počká na jeho úspěšný healthcheck. Vstupní bod aplikace je `backend.app.main:app`.
 
-### 2. (Volitelné) Spusť backend
+Backend při startu ověřuje připojení pomocí `SELECT 1`. Tabulky nevytváří a migrace automaticky nespouští. Na nové databázi je před použitím CRUD API potřeba aplikovat migrace podle následující části.
+
+- Backend: http://localhost:8000
+- Swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
+- Kontrola backendu a připojení k databázi: http://localhost:8000/api/v1/health/
+
+## Databáze a Alembic
+
+PostgreSQL 18 ukládá data do pojmenovaného volume `postgres_data`. Skript `docker/postgres/init.sql` se provádí pouze při inicializaci prázdného datového adresáře. Vytváří tabulky `customers`, `orders` a jejich ukázková data; tabulku `tests` nevytváří.
+
+Alembic získává URL připojení z `Config` v `backend/app/config.py` a používá `postgresql+asyncpg`. ORM modely se registrují importem `backend.app.models`; `Base.metadata` určuje požadované schéma. Filtr `include_name` omezuje autogenerate na schémata a tabulky z těchto metadat. Nespravované tabulky, například `customers` a `orders`, se neporovnávají k odstranění. Každý návrh migrace přesto ručně zkontroluj.
+
+Řetězec migrací:
+
+| Revize | Předchozí revize | Změna |
+|---|---|---|
+| `5d3c5b71f797` | žádná | Vytvoření tests: id, jmeno, prijmeni |
+| `6f536185102a` | `5d3c5b71f797` | Přidání nullable email VARCHAR(255) |
+
+Aktuální revize databáze se může lišit od poslední dostupné migrace. Ověř ji v běžícím backendu:
 
 ```bash
-docker-compose up -d backend
+docker compose exec backend uv run --locked alembic --version
+docker compose exec backend uv run --locked alembic history
+docker compose exec backend uv run --locked alembic current
 ```
 
-Backend běží na portu `http://localhost:8000`.
+### Nová databáze bez tabulky tests
 
-### 3. (Volitelné) Spusť migrations (pokud se strukturó db mění)
+Po sestavení image a spuštění PostgreSQL lze aplikovat celý řetězec:
 
 ```bash
-docker-compose up -d alembic
+docker compose run --rm --no-deps backend uv run --locked alembic upgrade head
 ```
 
-## API dokumentace
+Tento příkaz mění databázové schéma. Služba PostgreSQL musí být spuštěná; `--no-deps` ji nespouští. Stejný způsob lze použít pro kontrolní příkazy, pokud backend neběží.
 
-Po spuštění backendu otevři Swagger UI:
+### Existující databáze s daty v tests
+
+Nejdřív vytvoř zálohu, ověř `alembic current` a porovnej skutečné schéma s migracemi. Výchozí migraci vytvářející `tests` neaplikuj na již existující tabulku.
+
+Pouze pokud databáze ještě nemá evidovanou revizi a její tabulka `tests` přesně odpovídá první migraci, lze výchozí stav zaznamenat:
 
 ```bash
-http://localhost:8000/docs
+docker compose exec backend uv run --locked alembic stamp 5d3c5b71f797
 ```
 
-Nebo ReDoc:
+`stamp` zapisuje evidenci revize, ale neprovádí změny popsané migrací. Nepoužívej jej k přeskočení chybějících změn schématu. Pokud je databáze již na první revizi, neopakuj jej. Před aplikací další migrace ověř, zda sloupec `email` již existuje a zda skutečné schéma odpovídá evidované revizi.
+
+### Vytvoření a uchování dalších migrací
+
+Po změně ORM modelu znovu sestav backend, aby kontejner obsahoval aktuální modely. Pro autogenerate musí databáze odpovídat dosavadnímu migračnímu řetězci.
 
 ```bash
-http://localhost:8000/redoc
+docker compose exec backend uv run --locked alembic revision --autogenerate -m "popis zmeny"
 ```
+
+Pro ručně psanou revizi vynech `--autogenerate`. Nový soubor vznikne uvnitř kontejneru. **Před jeho odstraněním nebo obnovením zkopíruj migraci na macOS**; nahraď `NAZEV_SOUBORU.py` skutečným názvem:
+
+```bash
+docker cp ai_operations_backend:/app/backend/alembic/versions/NAZEV_SOUBORU.py backend/alembic/versions/NAZEV_SOUBORU.py
+```
+
+Pokud cílový soubor již existuje, nejdřív porovnej obsah. Zkontroluj operace i `down_revision`, zařaď soubor do Gitu a znovu sestav backend:
+
+```bash
+docker compose up -d --build backend
+```
+
+Samotné sestavení ani start kontejneru migraci neaplikují. Změny v databázi prováděj až po kontrole migrace a záloze. Do Gitu patří soubory `.py`, nikoli `__pycache__`.
+
+## API
+
+| Metoda | Cesta | Účel |
+|---|---|---|
+| GET | `/` | Informace o aplikaci |
+| GET | `/api/v1/health/` | Kontrola připojení k databázi |
+| GET | `/api/v1/test/` | Seznam záznamů |
+| POST | `/api/v1/test/` | Vytvoření záznamu |
+| GET | `/api/v1/test/{test_id}` | Detail záznamu |
+| PUT | `/api/v1/test/{test_id}` | Úprava záznamu |
+| DELETE | `/api/v1/test/{test_id}` | Odstranění záznamu |
+
+Vstup pro vytvoření a úpravu záznamu obsahuje `jmeno` a `prijmeni`. Odpověď obsahuje také `id`. Sloupec `email` je definovaný v ORM modelu a druhé migraci, ale zatím není vystavený v Pydantic schématech ani API.
 
 ## Konfigurace
 
-Používá environment variables:
+`Config` čte proměnné prostředí. Compose nyní předává pevně zadané vývojové hodnoty:
 
-| Variable            | Default (dev)              | Description                  |
-|---------------------|---------------------------|------------------------------|
-| DATABASE_HOST       | ai_operations_postgres    | PostgreSQL host              |
-| DATABASE_PORT       | 5432                      | PostgreSQL port              |
-| DATABASE_USER       | ai_user                   | PostgreSQL user              |
-| DATABASE_PASSWORD   | ai_password               | PostgreSQL password          |
-| DATABASE_NAME       | ai_operations             | Database name                |
-| SECRET_KEY          | dev-secret-key            | JWT/session key              |
-| ENVIRONMENT         | development              | development/production      |
+| Proměnná | Výchozí hodnota v Config / hodnota v Compose |
+|---|---|
+| DATABASE_HOST | ai_operations_postgres |
+| DATABASE_PORT | 5432 |
+| DATABASE_USER | ai_user |
+| DATABASE_PASSWORD | ai_password |
+| DATABASE_NAME | ai_operations |
+| SECRET_KEY | dev-secret-key-change-in-production |
+| ENVIRONMENT | development |
 
-Pro produkci:
+Uvnitř Docker sítě backend používá host `ai_operations_postgres`. PostgreSQL je také dostupný z macOS na `localhost:5432` pro externí databázové nástroje.
+
+Současný Compose je určen pro vývoj. Samotné `--env-file .env.production` nepřepíše hodnoty natvrdo uvedené v `environment`. Pro produkční nasazení je potřeba nejprve upravit předávání konfigurace a tajných údajů, omezit CORS a nastavit odpovídající provozní zabezpečení. Současná konfigurace není hotový produkční deployment.
+
+## Provozní příkazy
 
 ```bash
-docker-compose up -d postgres
-docker-compose --env-file .env.production up -d backend
+# Stav kontejnerů
+docker compose ps
+
+# Logy backendu
+docker compose logs -f backend
+
+# Logy PostgreSQL
+docker compose logs -f postgres
+
+# Zastavení a odstranění kontejnerů se zachováním databázového volume
+docker compose down
 ```
 
-## Technologie
+`docker compose down -v` odstraní také databázový volume a jeho data; nepoužívej jej při běžném zastavení projektu.
 
-- **Python 3.12** + **uv** (dependency manager)
-- **FastAPI** (web framework)
-- **SQLAlchemy 2.0** (ORM, async)
-- **Asyncpg** (async PostgreSQL driver)
-- **Pydantic** (validation)
-- **Docker** (containerizace)
+## Technologie a další rozvoj
 
-## Následující kroky
-
-1. Přidej SQLAlchemy models (`models.py`)
-2. Přidej Pydantic schemas (`schemas.py`)
-3. Implementuj API routes pro customers/orders
-4. Přidej Alembic migrations
-5. Přidej AI operations service
+- Python 3.12 v Docker image, uv, FastAPI, Pydantic.
+- SQLAlchemy 2 s asyncio, asyncpg, PostgreSQL 18 a Alembic.
+- Pytest, pytest-asyncio a HTTPX jsou v závislostech; automatická testovací sada zatím není vytvořená. `routers/test.py` je API router.
+- Další rozvoj: zpřístupnění emailu v API, automatické testy, ORM/API pro customers a orders a AI operations service.
+- Frontend zatím není implementovaný.
 
 ## License
 
