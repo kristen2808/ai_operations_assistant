@@ -34,3 +34,10 @@ class PostgreSQLConnectionsResponse(BaseModel):
     active: int
     idle: int
     idle_in_transaction: int
+
+class PostgreSQLLongRunningQueryResponse(BaseModel):
+    pid: int
+    datname: str | None
+    usename: str | None
+    duration_seconds: float
+    query: str | None
