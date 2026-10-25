@@ -28,3 +28,9 @@ class TestResponse(BaseModel):
     jmeno: str
     prijmeni: str
     email: EmailStr | None = None
+
+class PostgreSQLConnectionsResponse(BaseModel):
+    total: int
+    active: int
+    idle: int
+    idle_in_transaction: int

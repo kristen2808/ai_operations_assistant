@@ -2,6 +2,7 @@ from backend.app.database import engine
 from sqlalchemy import text
 
 from backend.app.routers import api_router
+from backend.app.routers.postgresql import router as postgresql_router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -28,6 +29,7 @@ async def startup_db_event():
 
 # Mount API routes
 app.include_router(api_router, prefix="/api/v1")
+app.include_router(postgresql_router, prefix="/api/v1")
 
 @app.get("/", response_model=dict)
 async def root():
